@@ -1,0 +1,16 @@
+services:
+
+  optimizer:
+    build: .
+    container_name: route-optimizer
+    restart: unless-stopped
+    # Cloudflare Tunnel reaches this on port 5748.
+    # Do NOT expose this port publicly — Cloudflare handles SSL + routing.
+    ports:
+      - "127.0.0.1:5748:5748"   # localhost only, not 0.0.0.0
+    networks:
+      - optimizer-net
+
+networks:
+  optimizer-net:
+    driver: bridge

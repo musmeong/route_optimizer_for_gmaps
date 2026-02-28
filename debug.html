@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Route Optimizer — Debug Tool</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root { --red:#c0392b; --black:#1a1a1a; --white:#f5f0eb; --light:#e8e0d8; --gray:#6b6b6b; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--black); color:var(--white); font-family:'Space Mono',monospace; min-height:100vh; padding:32px; }
+
+    h1 { font-size:24px; font-weight:700; margin-bottom:4px; }
+    h1 span { color:var(--red); }
+    .subtitle { color:var(--gray); font-size:11px; letter-spacing:2px; text-transform:uppercase; margin-bottom:32px; }
+
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; max-width:1200px; }
+    @media(max-width:800px){ .grid { grid-template-columns:1fr; } }
+
+    .panel { background:#242424; border-radius:8px; padding:20px; }
+    .panel-title { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--red); margin-bottom:16px; }
+
+    label { font-size:11px; color:var(--gray); display:block; margin-bottom:6px; }
+    textarea, input[type=text] {
+      width:100%; background:#1a1a1a; color:var(--white); border:1px solid #333;
+      border-radius:4px; padding:10px; font-family:'Space Mono',monospace; font-size:11px;
+      resize:vertical; outline:none;
+    }
+    textarea:focus, input:focus { border-color:var(--red); }
+    textarea { min-height:120px; }
+
+    button {
+      background:var(--red); color:white; border:none; border-radius:4px;
+      padding:10px 20px; font-family:'Space Mono',monospace; font-size:11px;
+      font-weight:700; letter-spacing:1px; cursor:pointer; margin-top:12px;
+      text-transform:uppercase; transition:opacity 0.15s;
+    }
+    button:hover { opacity:0.85; }
+    button.secondary { background:#333; }
+
+    .output {
+      background:#1a1a1a; border-radius:4px; padding:14px;
+      font-size:11px; line-height:1.8; white-space:pre-wrap;
+      min-height:60px; border:1px solid #333; margin-top:12px;
+      max-height:400px; overflow-y:auto;
+    }
+    .ok  { color:#2ecc71; }
+    .err { color:var(--red); }
+    .dim { color:var(--gray); }
+    .hi  { color:#f1c40f; }
+
+    .stop-row { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+    .stop-row input { flex:1; }
+    .stop-row .num { color:var(--red); font-size:10px; min-width:20px; }
+    .stop-row button { margin:0; padding:6px 10px; background:#333; }
+
+    .matrix-table { width:100%; border-collapse:collapse; font-size:10px; }
+    .matrix-table td, .matrix-table th {
+      border:1px solid #333; padding:4px 8px; text-align:center;
+    }
+    .matrix-table th { background:#2a2a2a; color:var(--red); }
+    .matrix-table .diag { color:#333; }
+
+    .badge { display:inline-block; background:#333; border-radius:3px; padding:2px 6px; font-size:9px; margin-left:6px; }
+    .badge.green { background:#1e4d2e; color:#2ecc71; }
+    .badge.red   { background:#4d1e1e; color:#e74c3c; }
+  </style>
+</head>
+<body>
+
+<h1>Route Optimizer <span>Debug Tool</span></h1>
+<p class="subtitle">Test optimizer logic without reinstalling the extension</p>
+
+<div class="grid">
+
+  <!-- LEFT: Stop Input -->
+  <div>
+    <div class="panel">
+      <div class="panel-title">01 — Input Stops (lat, lon)</div>
+      <p style="color:var(--gray);font-size:10px;margin-bottom:14px;">
+        Paste your stops. Each line: <span style="color:var(--white)">Name | lat | lon</span><br>
+        Or just paste a Google Maps /dir/ URL below to auto-parse.
+      </p>
+
+      <div id="stopRows"></div>
+      <button class="secondary" onclick="addStopRow()">+ Add Stop</button>
+
+      <div style="margin-top:20px;">
+        <label>Or paste a Google Maps directions URL:</label>
+        <input type="text" id="urlInput" placeholder="https://www.google.com/maps/dir/..."/>
+        <button onclick="parseURL()">Parse URL</button>
+      </div>
+
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center;">
+        <label style="margin:0"><input type="checkbox" id="dbgLockStart" checked> Lock Start</label>
+        <label style="margin:0"><input type="checkbox" id="dbgLockEnd" checked> Lock End</label>
+      </div>
+
+      <button onclick="runOptimizer()">▶ Run Optimizer</button>
+    </div>
+
+    <!-- Distance Matrix -->
+    <div class="panel" style="margin-top:24px;">
+      <div class="panel-title">02 — Distance Matrix (Manhattan km)</div>
+      <div id="matrixOut" class="output dim">Run optimizer to see matrix...</div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Results -->
+  <div>
+    <div class="panel">
+      <div class="panel-title">03 — Optimization Log</div>
+      <div id="logOut" class="output dim">Results will appear here...</div>
+    </div>
+
+    <div class="panel" style="margin-top:24px;">
+      <div class="panel-title">04 — 2-opt Swap Trace</div>
+      <p style="color:var(--gray);font-size:10px;margin-bottom:10px;">Every swap attempt — green = kept, red = rejected</p>
+      <div id="traceOut" class="output dim" style="max-height:300px;">Run optimizer to see swap trace...</div>
+    </div>
+
+    <div class="panel" style="margin-top:24px;">
+      <div class="panel-title">05 — Google Maps URL</div>
+      <div id="urlOut" class="output dim">Optimized URL will appear here...</div>
+      <button onclick="openURL()" id="openBtn" style="display:none;">Open in Google Maps ↗</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── Default Jakarta stops for quick testing ───
+const DEFAULT_STOPS = [
+  { name: 'tiket.com Jakarta Office', lat: -6.1874, lon: 106.7933 },
+  { name: 'Padang Oriental BSD',      lat: -6.3012, lon: 106.6532 },
+  { name: 'Giant BSD',                lat: -6.3156, lon: 106.6678 },
+  { name: 'Ritz-Carlton Jakarta',     lat: -6.2297, lon: 106.8227 },
+];
+
+// ─── Stop row UI ───
+let stopCount = 0;
+
+function addStopRow(name='', lat='', lon='') {
+  stopCount++;
+  const n = stopCount;
+  const div = document.createElement('div');
+  div.className = 'stop-row';
+  div.id = `row-${n}`;
+  div.innerHTML = `
+    <span class="num">${String(n).padStart(2,'0')}</span>
+    <input type="text" placeholder="Stop name"       value="${name}" id="name-${n}" style="flex:3"/>
+    <input type="text" placeholder="lat e.g -6.18"   value="${lat}"  id="lat-${n}"  style="flex:2"/>
+    <input type="text" placeholder="lon e.g 106.79"  value="${lon}"  id="lon-${n}"  style="flex:2"/>
+    <button onclick="removeRow(${n})">✕</button>
+  `;
+  document.getElementById('stopRows').appendChild(div);
+}
+
+function removeRow(n) {
+  document.getElementById(`row-${n}`)?.remove();
+}
+
+function getStops() {
+  const stops = [];
+  const rows = document.querySelectorAll('.stop-row');
+  for (const row of rows) {
+    const id  = row.id.replace('row-','');
+    const name = document.getElementById(`name-${id}`)?.value.trim();
+    const lat  = parseFloat(document.getElementById(`lat-${id}`)?.value);
+    const lon  = parseFloat(document.getElementById(`lon-${id}`)?.value);
+    if (name && !isNaN(lat) && !isNaN(lon)) {
+      stops.push({ name, lat, lon });
+    }
+  }
+  return stops;
+}
+
+function parseURL() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url.includes('/maps/dir/')) { alert('Not a Google Maps directions URL'); return; }
+
+  const dirPart = url.split('/maps/dir/')[1] || '';
+  const segs = dirPart.split('/')
+    .map(s => { try { return decodeURIComponent(s.replace(/\+/g,' ')).trim(); } catch(e){ return s; } })
+    .filter(s => s && !s.startsWith('data=') && !/^\d+z$/.test(s));
+
+  document.getElementById('stopRows').innerHTML = '';
+  stopCount = 0;
+
+  for (const seg of segs) {
+    if (/^@-?\d/.test(seg)) continue;
+    const m = seg.match(/^(.+?)@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (m) addStopRow(m[1].trim(), m[2], m[3]);
+    else if (seg.trim()) addStopRow(seg.trim(), '', '');
+  }
+
+  log(`Parsed ${document.querySelectorAll('.stop-row').length} stops from URL`, 'ok');
+  geocodeMissingStops();
+}
+
+// ─── Manhattan distance + 2-opt (verbose version for debugging) ───
+
+const toKm   = (lat,lon) => ({ x:lon*91, y:lat*111 });
+const mhDist = (a,b)     => { const ka=toKm(a.lat,a.lon),kb=toKm(b.lat,b.lon); return Math.abs(kb.x-ka.x)+Math.abs(kb.y-ka.y); };
+const totD   = (r,m)     => { let d=0; for(let i=0;i<r.length-1;i++) d+=m[r[i]][r[i+1]]; return d; };
+
+const trace = [];
+
+function twoOptVerbose(route, m, ls, le, stops) {
+  let best=route.slice(), ok=true, pass=0;
+  const s=ls?1:0, e=le?best.length-1:best.length;
+
+  while(ok){
+    ok=false; pass++;
+    for(let i=s;i<e-1;i++){
+      for(let j=i+1;j<e;j++){
+        const c=[...best.slice(0,i),...best.slice(i,j+1).reverse(),...best.slice(j+1)];
+        const before=totD(best,m).toFixed(2), after=totD(c,m).toFixed(2);
+        const improved = parseFloat(after) < parseFloat(before);
+
+        trace.push({
+          pass, i, j,
+          from: best.map(x=>stops[x].name.split(',')[0]),
+          to:   c.map(x=>stops[x].name.split(',')[0]),
+          before, after, kept: improved
+        });
+
+        if(improved){ best=c; ok=true; }
+      }
+    }
+  }
+  return best;
+}
+
+function runOptimizer() {
+  const stops = getStops();
+  if (stops.length < 3) { logClear(); log('Need at least 3 stops with coordinates.', 'err'); return; }
+
+  const ls = document.getElementById('dbgLockStart').checked;
+  const le = document.getElementById('dbgLockEnd').checked;
+
+  logClear();
+  trace.length = 0;
+
+  log(`Stops loaded: ${stops.length}`, 'ok');
+  log(`Lock start: ${ls} | Lock end: ${le}`, 'dim');
+  log('');
+
+  // Build distance matrix
+  const m = stops.map(a => stops.map(b => mhDist(a,b)));
+
+  // Show matrix
+  renderMatrix(stops, m);
+
+  // Log initial route
+  const init = stops.map((_,i)=>i);
+  log(`Initial route:`, 'hi');
+  init.forEach((idx,pos) => log(`  ${pos+1}. ${stops[idx].name.split(',')[0]}`));
+  log(`Initial distance: ${totD(init,m).toFixed(2)} km`, 'dim');
+  log('');
+
+  // Run 2-opt
+  log('Running 2-opt...', 'hi');
+  const opt   = twoOptVerbose(init, m, ls, le, stops);
+  const dBefore = totD(init,m);
+  const dAfter  = totD(opt,m);
+
+  log('');
+  log(`Optimized route:`, 'ok');
+  opt.forEach((idx,pos) => log(`  ${pos+1}. ${stops[idx].name.split(',')[0]}`));
+  log('');
+  log(`Distance before : ${dBefore.toFixed(2)} km`, 'dim');
+  log(`Distance after  : ${dAfter.toFixed(2)} km`,  dAfter < dBefore ? 'ok' : 'dim');
+
+  if (dAfter < dBefore) {
+    const pct = ((dBefore-dAfter)/dBefore*100).toFixed(1);
+    log(`Improvement     : ${pct}% shorter ✅`, 'ok');
+  } else {
+    log(`Route was already optimal ✅`, 'ok');
+  }
+
+  // Render swap trace
+  renderTrace();
+
+  // Build and show URL
+  const optimizedStops = opt.map(i => stops[i]);
+  const url = `https://www.google.com/maps/dir/${optimizedStops.map(s => encodeURIComponent(s.name)).join('/')}/`;
+  document.getElementById('urlOut').textContent = url;
+  document.getElementById('openBtn').style.display = 'block';
+  document.getElementById('openBtn').onclick = () => window.open(url, '_blank');
+}
+
+// ─── Rendering helpers ───
+
+function renderMatrix(stops, m) {
+  const n = stops.length;
+  let html = '<table class="matrix-table"><tr><th></th>';
+  stops.forEach(s => { html += `<th>${s.name.split(',')[0].slice(0,8)}</th>`; });
+  html += '</tr>';
+  for(let i=0;i<n;i++){
+    html += `<tr><th>${stops[i].name.split(',')[0].slice(0,8)}</th>`;
+    for(let j=0;j<n;j++){
+      if(i===j) html += `<td class="diag">—</td>`;
+      else html += `<td>${m[i][j].toFixed(1)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</table>';
+  document.getElementById('matrixOut').innerHTML = html;
+}
+
+function renderTrace() {
+  const el = document.getElementById('traceOut');
+  if (!trace.length) { el.textContent = 'No swaps attempted.'; return; }
+
+  const kept     = trace.filter(t => t.kept).length;
+  const rejected = trace.filter(t => !t.kept).length;
+
+  let html = `<span class="dim">Total attempts: ${trace.length} | </span>`;
+  html    += `<span class="ok">Kept: ${kept}</span><span class="dim"> | </span>`;
+  html    += `<span class="err">Rejected: ${rejected}</span>\n\n`;
+
+  for (const t of trace) {
+    const cls   = t.kept ? 'ok' : 'err';
+    const icon  = t.kept ? '✅' : '❌';
+    html += `<span class="${cls}">${icon} Pass ${t.pass} | swap [${t.i},${t.j}] | ${t.before}→${t.after} km</span>\n`;
+    if (t.kept) {
+      html += `<span class="dim">   ${t.to.join(' → ')}</span>\n`;
+    }
+  }
+
+  el.innerHTML = html;
+}
+
+// ─── Log helpers ───
+
+function log(msg, cls='') {
+  const el  = document.getElementById('logOut');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function logClear() {
+  document.getElementById('logOut').innerHTML = '';
+}
+
+// ─── Auto-geocode missing coordinates via Nominatim ───
+async function geocodeMissingStops() {
+  const rows = document.querySelectorAll('.stop-row');
+  let geocoded = 0;
+
+  for (const row of rows) {
+    const id  = row.id.replace('row-','');
+    const latEl = document.getElementById(`lat-${id}`);
+    const lonEl = document.getElementById(`lon-${id}`);
+    const nameEl = document.getElementById(`name-${id}`);
+
+    // Skip if already has coordinates
+    if (latEl?.value.trim() && lonEl?.value.trim()) continue;
+
+    const name = nameEl?.value.trim();
+    if (!name) continue;
+
+    latEl.value = 'geocoding...';
+    lonEl.value = 'please wait';
+
+    try {
+      // Try progressively simpler queries
+      const place = name.split(',')[0].trim();
+      const city  = name.match(/\b(Jakarta|Surabaya|Bandung|Tangerang|Bekasi|Tokyo|Osaka|Singapore|Bali)\b/i)?.[1];
+      const candidates = [...new Set([name, place, city && `${place}, ${city}`, `${place}, Indonesia`].filter(Boolean))];
+
+      let result = null;
+      for (const q of candidates) {
+        const res  = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`, { headers: { 'Accept-Language': 'en' } });
+        const data = await res.json();
+        if (data?.length > 0) { result = data[0]; break; }
+        await new Promise(r => setTimeout(r, 1100));
+      }
+
+      if (result) {
+        latEl.value = parseFloat(result.lat).toFixed(5);
+        lonEl.value = parseFloat(result.lon).toFixed(5);
+        geocoded++;
+        log(`✅ Geocoded: ${place} → ${latEl.value}, ${lonEl.value}`, 'ok');
+      } else {
+        latEl.value = '';
+        lonEl.value = '';
+        log(`❌ Could not locate: ${place}. Enter coords manually.`, 'err');
+      }
+    } catch (e) {
+      latEl.value = ''; lonEl.value = '';
+      log(`❌ Error geocoding ${name}: ${e.message}`, 'err');
+    }
+
+    await new Promise(r => setTimeout(r, 1100)); // Nominatim rate limit
+  }
+
+  if (geocoded > 0) log(`\nGeocoded ${geocoded} stops. Ready to optimize!`, 'ok');
+}
+
+// ─── Init with default Jakarta stops ───
+DEFAULT_STOPS.forEach(s => addStopRow(s.name, s.lat, s.lon));
+</script>
+
+</body>
+</html>

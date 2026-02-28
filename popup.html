@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Route Optimizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --red:    #c0392b;
+      --white:  #f5f0eb;
+      --black:  #1a1a1a;
+      --gray:   #6b6b6b;
+      --light:  #e8e0d8;
+      --accent: #e74c3c;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 300px;
+      background: var(--white);
+      color: var(--black);
+      font-family: 'Noto Sans JP', sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--black);
+      color: var(--white);
+      padding: 18px 20px 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .header::before {
+      content: '最適化';
+      position: absolute;
+      right: -8px; top: -4px;
+      font-size: 52px;
+      font-weight: 700;
+      color: rgba(255,255,255,0.05);
+      letter-spacing: -2px;
+      pointer-events: none;
+    }
+    .header-tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: var(--red);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+    }
+    .header h1 span { color: var(--accent); }
+
+    /* ── Body ── */
+    .body { padding: 16px 20px; }
+
+    /* ── Dropdowns ── */
+    .options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .select-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .select-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      color: var(--gray);
+      text-transform: uppercase;
+      padding-left: 2px;
+    }
+
+    .select-wrap {
+      position: relative;
+    }
+
+    .select-wrap select {
+      width: 100%;
+      padding: 9px 32px 9px 12px;
+      background: var(--light);
+      color: var(--black);
+      border: 1.5px solid transparent;
+      border-radius: 6px;
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 11px;
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .select-wrap select:focus {
+      outline: none;
+      border-color: var(--red);
+    }
+
+    .select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--gray);
+      pointer-events: none;
+    }
+
+    /* loading skeleton for selects */
+    .select-wrap select.loading-select {
+      color: var(--gray);
+      font-style: italic;
+    }
+
+    /* ── Algorithm badge ── */
+    .algo-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--light);
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+    .algo-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      flex-shrink: 0;
+    }
+    .algo-text {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--gray);
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Button ── */
+    #optimizeBtn {
+      width: 100%;
+      padding: 13px;
+      background: var(--black);
+      color: var(--white);
+      border: none;
+      border-radius: 6px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      position: relative;
+      overflow: hidden;
+    }
+    #optimizeBtn:hover { background: #333; }
+    #optimizeBtn:active { transform: scale(0.98); }
+    #optimizeBtn:disabled {
+      background: #999;
+      cursor: not-allowed;
+      transform: none;
+    }
+    #optimizeBtn.loading { color: transparent; }
+    #optimizeBtn.loading::after {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+    /* ── Status ── */
+    #status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      line-height: 1.5;
+      display: none;
+    }
+    #status.info    { background: #eaf0fb; color: #2255aa; display: block; }
+    #status.success { background: #eafaf1; color: #1e8449; display: block; }
+    #status.error   { background: #fdf0ef; color: #c0392b; display: block; }
+    #status.warning { background: #fef9e7; color: #b7770d; display: block; }
+
+    /* ── Steps ── */
+    #steps { margin-top: 12px; display: none; }
+    #steps.visible { display: block; }
+    .steps-title {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--gray);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 11px;
+      color: var(--black);
+      border-bottom: 1px solid var(--light);
+    }
+    .step-item:last-child { border-bottom: none; }
+    .step-num {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--red);
+      padding-top: 1px;
+      flex-shrink: 0;
+      min-width: 20px;
+    }
+    .step-tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 8px;
+      color: var(--white);
+      background: var(--red);
+      padding: 1px 4px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 10px 20px;
+      border-top: 1px solid var(--light);
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--gray);
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-tag">Google Maps</div>
+    <h1>Route <span>Optimizer</span></h1>
+  </div>
+
+  <div class="body">
+
+    <div class="options">
+      <div class="select-row">
+        <div class="select-label">Start point</div>
+        <div class="select-wrap">
+          <select id="selectStart">
+            <option value="auto">— Auto —</option>
+          </select>
+        </div>
+      </div>
+      <div class="select-row">
+        <div class="select-label">End point</div>
+        <div class="select-wrap">
+          <select id="selectEnd">
+            <option value="auto">— Auto —</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="algo-badge">
+      <div class="algo-dot"></div>
+      <div class="algo-text">Manhattan distance · 2-opt · No API</div>
+    </div>
+
+    <button id="optimizeBtn">OPTIMIZE ROUTE</button>
+
+    <div id="status"></div>
+    <div id="steps">
+      <div class="steps-title">Optimized Order</div>
+      <div id="stepsList"></div>
+    </div>
+
+  </div>
+
+  <div id="debugPanel" style="display:none;margin:0 20px 12px;background:#111;border-radius:6px;padding:10px;font-family:monospace;font-size:9px;color:#aaa;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;"></div>
+
+  <div class="footer">
+    Free · No API needed ·
+    <span id="debugToggle" style="color:var(--red);cursor:pointer;text-decoration:underline;">Show Debug</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
